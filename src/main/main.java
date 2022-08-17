@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.lang.Integer;
 import java.nio.file.Path;
 import java.text.FieldPosition;
+import java.util.Arrays;
 
 import static java.io.FileWriter.*;
 
@@ -155,17 +156,23 @@ public class main {
                 FileDialog dialog = new FileDialog((Frame)null, "Select picture file for analyzing");
                 dialog.setMode(FileDialog.SAVE);
                 dialog.setVisible(true);
+                String outputFile = dialog.getFile();
                 String outputName = dialog.getDirectory() + dialog.getFile();
+
+                String nameBase = outputFile.replaceFirst("[.][^.]+$", "");
+
+                String plotName = nameBase + "_1d.dat";
+                System.out.println(plotName);
                 try {
                     ImageIO.write(img[0], "png", new File(outputName));
 
                     String message = "The 1D plot data of the shown curve was written to " + dialog.getDirectory() +
-                            "1D_plot.dat.";
+                            plotName;
                     JOptionPane.showMessageDialog(null, message);
                 } catch (IOException e4) {
                     throw new RuntimeException(e4);
                 }
-                Path filePath = Path.of(dialog.getDirectory() + "1D_plot.dat");
+                Path filePath = Path.of(dialog.getDirectory() + plotName);
                 try(FileWriter fileWriter = new FileWriter(filePath.toFile())) {
                     fileWriter.write("# width: " + width[0] + " height: " + height[0] +
                             " Path len: " + pathPixNum[0] + "\n");
@@ -173,7 +180,7 @@ public class main {
                         fileWriter.write(i + " " + plotLine[i] + " \n");
                     }
                 } catch (IOException io) {
-                    System.out.println("The file 1D_brightness.dat could not be written!");
+                    System.out.println("The file " + plotName + " could not be written!");
                     io.printStackTrace();
                 }
             }
@@ -276,29 +283,55 @@ public class main {
                     int blue;
                     double brightness;
 
+                    // Get the current brightness of an arbitrary real coordinate point by
+                    // linear interpolation between the four end points of the pixel square
+                    // in which the current point is located.
+
+                    // The corner coordinates of the nearest pixels
+                    int[][] coordCorner = new int[2][2];
+                    // The brightness values at the corners of the pixel square
+                    double[][] brightCorner = new double[2][2];
 
 
                         for (int i = 0; i < pathPixNum[0]; i++) {
+
                             xAct = xStart[0] + deltaX * i;
                             yAct = yStart[0] + deltaY * i;
-                            xPos = (int) Math.round(xAct);
-                            yPos = (int) Math.round(yAct);
-                            rgb[0] = img[0].getRGB(xPos, yPos);
+
+                            coordCorner[0][0] = (int) Math.floor(xAct);
+                            coordCorner[0][1] = (int) Math.ceil(xAct);
+                            coordCorner[1][0] = (int) Math.floor(yAct);
+                            coordCorner[1][1] = (int) Math.ceil(yAct);
+
+                            for (int j = 0; j < 2; j++) {
+                                for (int k = 0; k < 2; k++) {
+                                    rgb[0] = img[0].getRGB(coordCorner[0][j], coordCorner[1][k]);
+
+                                    // Get the components of the single colors by dividing up the RGB integer
+                                    blue = rgb[0] & 0xff;
+                                    green = (rgb[0] & 0xff00) >> 8;
+                                    red = (rgb[0] & 0xff0000) >> 16;
 
 
-                            // Get the components of the single colors by dividing up the RGB integer
-                            blue = rgb[0] & 0xff;
-                            green = (rgb[0] & 0xff00) >> 8;
-                            red = (rgb[0] & 0xff0000) >> 16;
+                                    // Take the average value of all three colors as effective brightness of the pixel
+                                    // Cast the arguments as floats
 
+                                    brightCorner[j][k] = ((float) blue + (float) green + (float) red) / 3;
+                                }
+                            }
+                            // Rescale the current coordinates to the unit square for easier evaluation
+                            xAct = xAct - Math.floor(xAct);
+                            yAct = yAct - Math.floor(yAct);
 
-                            // Take the average value of all three colors as effective brightness of the pixel
-                            // Cast the arguments as floats
+                            System.out.println(Arrays.deepToString(brightCorner));
+                            System.out.println(Arrays.deepToString(coordCorner));
 
-                            brightness = ((float) blue + (float) green + (float) red) / 3;
-                            plotLine[i] = brightness;
+                            // Calculate the brightness as a linear unit square interpolation
+                            plotLine[i] = brightCorner[0][0] * (1-xAct) * (1-yAct) + brightCorner[1][0] * xAct *
+                                    (1- yAct) + brightCorner[0][1] * (1-xAct) * yAct + brightCorner[1][1] * xAct * yAct;
 
                         }
+
 
 
 
